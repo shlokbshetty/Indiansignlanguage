@@ -29,7 +29,10 @@ def store_images(gesture_name):
     Captures and saves images for a specific gesture.
     Images will be saved in a subfolder named after the gesture.
     """
-    total_pics = 1200
+    # --- THIS IS THE CHANGE YOU REQUESTED ---
+    total_pics = 2000
+    # --- END OF CHANGE ---
+    
     hist = get_hand_hist()
     cam = cv2.VideoCapture(1)
     if not cam.isOpened():
@@ -46,11 +49,9 @@ def store_images(gesture_name):
         os.mkdir(folder_path)
 
     # Check for existing images to avoid overwriting
-    # This lets you add more images to a gesture later.
     try:
         existing_images = [f for f in os.listdir(folder_path) if f.endswith('.jpg')]
         if existing_images:
-            # Find the highest numbered image (e.g., '1200.jpg')
             pic_no = max([int(f.split('.')[0]) for f in existing_images])
             print(f"Resuming capture. Starting from image {pic_no + 1}.")
         else:
@@ -71,76 +72,53 @@ def store_images(gesture_name):
         img = cv2.flip(img, 1)
         imgHSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         
-        # 1. Perform Back-Projection (find hand color)
         dst = cv2.calcBackProject([imgHSV], [0, 1], hist, [0, 180, 0, 256], 1)
-        
-        # 2. Clean up the mask
         disc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
         cv2.filter2D(dst, -1, disc, dst)
         blur = cv2.GaussianBlur(dst, (11, 11), 0)
         blur = cv2.medianBlur(blur, 15)
-        
-        # 3. Create a binary thresholded image
         thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         
-        # 4. Crop the thresholded image to the ROI
         thresh_roi = thresh[y:y+h, x:x+w]
         
-        # 5. Find contours
-        # --- FIX: Changed [1] to [0] for modern OpenCV (4.x) ---
-        # OpenCV 3.x returns (img, contours, hierarchy)
-        # OpenCV 4.x returns (contours, hierarchy)
         contours_data = cv2.findContours(thresh_roi.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-        
-        # This line makes it compatible with both OpenCV 3 and 4
         contours = contours_data[0] if len(contours_data) == 2 else contours_data[1]
 
         if len(contours) > 0:
             contour = max(contours, key=cv2.contourArea)
             
-            # Start capturing if contour is large enough and we've waited
             if cv2.contourArea(contour) > 10000 and frames > 50:
                 x1, y1, w1, h1 = cv2.boundingRect(contour)
                 pic_no += 1
-                
-                # Crop the hand from the thresholded ROI
                 save_img = thresh_roi[y1:y1+h1, x1:x1+w1]
                 
-                # 6. Make the image square by padding
-                if w1 > h1 :
-                     # Pad top/bottom
+                if w1 > h1:
                     padding = int((w1 - h1) / 2)
                     save_img = cv2.copyMakeBorder(save_img, padding, padding, 0, 0, cv2.BORDER_CONSTANT, (0, 0, 0))
                 else:
-                    # Pad left/right
                     padding = int((h1 - w1) / 2)
                     save_img = cv2.copyMakeBorder(save_img, 0, 0, padding, padding, cv2.BORDER_CONSTANT, (0, 0, 0))
                 
-                # 7. Resize to final size
                 save_img = cv2.resize(save_img, (image_x, image_y))
                 
-                # 8. Data Augmentation (simple flip)
                 if random.randint(0, 10) % 2 == 0:
                     save_img = cv2.flip(save_img, 1)
                 
-                # 9. Save the final image
                 save_path = os.path.join(folder_path, f"{pic_no}.jpg")
                 cv2.imwrite(save_path, save_img)
                 
                 cv2.putText(img, "Capturing...", (30, 60), cv2.FONT_HERSHEY_TRIPLEX, 2, (127, 255, 255))
 
-        # --- Display Windows ---
         cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
         cv2.putText(img, str(pic_no), (30, 400), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (127, 127, 255))
         cv2.imshow("Capturing gesture", img)
-        cv2.imshow("Thresh", thresh_roi) # Show the cropped threshold
+        cv2.imshow("Thresh", thresh_roi)
         
-        # --- Keypress Logic ---
         keypress = cv2.waitKey(1) & 0xFF
         
         if keypress == ord('c'):
-            flag_start_capturing = not flag_start_capturing # Toggle capturing
-            frames = 0 # Reset frame count on toggle
+            flag_start_capturing = not flag_start_capturing
+            frames = 0
             
         if flag_start_capturing:
             frames += 1
@@ -153,18 +131,13 @@ def store_images(gesture_name):
             print("Quitting...")
             break
 
-    # Cleanup
     cam.release()
     cv2.destroyAllWindows()
 
 # --- Main execution ---
 if __name__ == "__main__":
     init_folders()
-    
-    # Get gesture name from user
     g_name = input("Enter gesture name (e.g., 'fist', 'peace_sign'): ").strip().lower()
-    
-    # Sanitize the name to be a valid folder name
     g_name = g_name.replace(' ', '_').replace('.', '').replace('/', '')
     
     if not g_name:
