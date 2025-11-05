@@ -7,22 +7,24 @@ import os
 
 def get_label_map():
     """
-    Finds all unique gesture folders and creates a mapping
-    from the folder name (e.g., 'fist') to an integer (e.g., 0).
-    It also saves this map to a file for later use.
+    Finds all your gesture folders and creates a "dictionary" (label map)
+    that maps the name (string) to a number (integer).
+    e.g., {'app_switch': 0, 'close_window': 1, ...}
     """
-    # Find all subdirectories in the 'gestures' folder
     gesture_folders = glob("gestures/*")
-    
-    # Get the base name of each folder (e.g., 'fist')
+    # Get just the folder names (e.g., 'app_switch')
     labels = [os.path.basename(folder) for folder in gesture_folders if os.path.isdir(folder)]
-    labels.sort() # Sort for consistent mapping
+    labels.sort() # Sort them alphabetically so the map is consistent
     
-    # Create the dictionary mapping
-    # e.g., {'fist': 0, 'peace_sign': 1, 'thumbs_up': 2}
+    if not labels:
+        print("ERROR: No gesture folders found in the 'gestures' directory.")
+        print("Please run 'create_gestures.py' first.")
+        exit()
+        
+    # Create the dictionary
     label_map = {label: i for i, label in enumerate(labels)}
     
-    # Save this map. The prediction script will need it!
+    # Save this dictionary to a file. Our final.py script will need it!
     with open("label_map.pkl", "wb") as f:
         pickle.dump(label_map, f)
         
@@ -33,70 +35,75 @@ def get_label_map():
 
 def pickle_images_labels(label_map):
     """
-    Loads all images, converts them to grayscale numpy arrays,
-    and pairs them with their correct integer label.
+    This is the "factory." It loads all 18,000+ images from your folders,
+    reads them as grayscale, and pairs them with their correct number label.
     """
     images_labels = []
-    
-    # Find all .jpg files in all subfolders of 'gestures'
+    # Get a list of *all* .jpg files inside *all* gesture folders
     images_paths = glob("gestures/*/*.jpg")
     images_paths.sort()
     
+    if not images_paths:
+        print("ERROR: No .jpg images found in 'gestures' subfolders.")
+        exit()
+        
     print(f"Loading {len(images_paths)} images...")
     
     for image_path in images_paths:
-        # Extract the string label (the folder name)
-        # e.g., 'gestures/fist/1.jpg' -> 'fist'
         try:
+            # e.g., 'gestures/scroll_up/1.jpg' -> 'scroll_up'
             label_str = image_path[image_path.find(os.sep)+1 : image_path.rfind(os.sep)]
         except Exception as e:
             print(f"Error parsing path {image_path}: {e}")
             continue
             
-        # Use the map to get the integer label
+        # Use the dictionary to turn the name 'scroll_up' into a number
         label_int = label_map[label_str]
         
-        # Read the image in grayscale (0 flag)
-        img = cv2.imread(image_path, 0)
+        # Read the image as grayscale (0 flag)
+        img = cv2.imread(image_path, 0) 
         
-        # Append the tuple (image_array, integer_label)
+        if img is None:
+            print(f"Warning: Could not read {image_path}. Skipping.")
+            continue
+            
+        # Add the (image_data, label_number) pair to our big list
         images_labels.append((np.array(img, dtype=np.uint8), label_int))
         
     return images_labels
 
-# --- Main Execution ---
+# --- This is the code that runs when you execute the script ---
 
-# 1. Create and save the label-to-integer mapping
+print("Step 1: Creating label map...")
 label_map = get_label_map()
 
-# 2. Load all images and apply integer labels
+print("\nStep 2: Loading and processing images...")
 images_labels = pickle_images_labels(label_map)
 
-# 3. Shuffle the dataset
-# (One shuffle is sufficient, no need for four)
+print("\nStep 3: Shuffling dataset...")
+# This is super important! It shuffles all the images randomly
+# so the model doesn't just learn one gesture at a time.
 images_labels = shuffle(images_labels)
 
-# 4. Unzip the list of tuples into two separate lists
+# Unzip the big list of (image, label) pairs into two separate lists
 images, labels = zip(*images_labels)
 print(f"Total images & labels loaded: {len(images_labels)}")
 
-# 5. Define the split points
+# 5. Define our 83% / 8.3% / 8.3% split
 total_count = len(images)
 train_split = int(5/6 * total_count)
 test_split = int(11/12 * total_count)
 
-# 6. Split the data
-print("Splitting dataset...")
-# 
-# Train Set: First 5/6 (83.3%)
+print("\nStep 4: Splitting dataset...")
+# The "study notes" (83.3%)
 train_images = images[:train_split]
 train_labels = labels[:train_split]
 
-# Test Set: Next 1/12 (8.3%)
+# The "final exam" (8.3%)
 test_images = images[train_split:test_split]
 test_labels = labels[train_split:test_split]
 
-# Validation Set: Last 1/12 (8.3%)
+# The "practice quiz" (8.3%)
 val_images = images[test_split:]
 val_labels = labels[test_split:]
 
@@ -104,25 +111,24 @@ print(f"Training set:   {len(train_images)} images")
 print(f"Testing set:    {len(test_images)} images")
 print(f"Validation set: {len(val_images)} images")
 
-# 7. Save all the processed data to files
-print("Saving processed data to files...")
-
+print("\nStep 5: Saving processed data to files...")
+# We save these as pickle files so our trainer can load them fast
 with open("train_images", "wb") as f:
     pickle.dump(train_images, f)
 with open("train_labels", "wb") as f:
     pickle.dump(train_labels, f)
-del train_images, train_labels # Clear memory
+del train_images, train_labels # Delete from memory to save RAM
 
 with open("test_images", "wb") as f:
     pickle.dump(test_images, f)
 with open("test_labels", "wb") as f:
     pickle.dump(test_labels, f)
-del test_images, test_labels # Clear memory
+del test_images, test_labels
 
 with open("val_images", "wb") as f:
     pickle.dump(val_images, f)
 with open("val_labels", "wb") as f:
     pickle.dump(val_labels, f)
-del val_images, val_labels # Clear memory
+del val_images, val_labels
 
-print("Data processing complete. All files saved.")
+print("\nData processing complete. All files saved.")
